@@ -148,6 +148,7 @@ __global__ void computeCov2DCUDA(int P,
 	const float h_x, float h_y,
 	const float tan_fovx, float tan_fovy,
 	const float kernel_size,
+	const bool mip,
 	const float* view_matrix,
 	const float* dL_dconics,
 	float3* dL_dmeans,
@@ -198,30 +199,37 @@ __global__ void computeCov2DCUDA(int P,
 
 	glm::mat3 cov2D = glm::transpose(T) * glm::transpose(Vrk) * T;
 
-	const float det_0 = max(1e-6, cov2D[0][0] * cov2D[1][1] - cov2D[0][1] * cov2D[0][1]);
-	const float det_1 = max(1e-6, (cov2D[0][0] + kernel_size) * (cov2D[1][1] + kernel_size) - cov2D[0][1] * cov2D[0][1]);
-	// sqrt here
-	const float coef = sqrt(det_0 / (det_1+1e-6) + 1e-6);
+	float a, b, c, det_0, det_1, coef, opacity, dL_dcoef, dL_dsqrtcoef, dL_ddet0, dL_ddet1, dcoef_da, dcoef_db, dcoef_dc;
+	if (mip){
+		det_0 = max(1e-6, cov2D[0][0] * cov2D[1][1] - cov2D[0][1] * cov2D[0][1]);
+		det_1 = max(1e-6, (cov2D[0][0] + kernel_size) * (cov2D[1][1] + kernel_size) - cov2D[0][1] * cov2D[0][1]);
+		// sqrt here
+		coef = sqrt(det_0 / (det_1+1e-6) + 1e-6);
 
-	// update the gradient of alpha and save the gradient of dalpha_dcoef
-	// we need opacity as input
-	// new_opacity = coef * opacity
-	// if we know the new opacity, we can derive original opacity and then dalpha_dcoef = dopacity * opacity
-	const float opacity = combined_opacity / (coef + 1e-6);
-	const float dL_dcoef = dL_dopacity[idx] * opacity;
-	const float dL_dsqrtcoef = dL_dcoef * 0.5 * 1. / (coef + 1e-6);
-	const float dL_ddet0 = dL_dsqrtcoef / (det_1+1e-6);
-	const float dL_ddet1 = dL_dsqrtcoef * det_0 * (-1.f / (det_1 * det_1 + 1e-6));
-	//TODO gradient is zero if det_0 or det_1 < 0
-	const float dcoef_da = dL_ddet0 * cov2D[1][1] + dL_ddet1 * (cov2D[1][1] + kernel_size);
-	const float dcoef_db = dL_ddet0 * (-2. * cov2D[0][1]) + dL_ddet1 * (-2. * cov2D[0][1]);
-	const float dcoef_dc = dL_ddet0 * cov2D[0][0] + dL_ddet1 * (cov2D[0][0] + kernel_size);
+		// update the gradient of alpha and save the gradient of dalpha_dcoef
+		// we need opacity as input
+		// new_opacity = coef * opacity
+		// if we know the new opacity, we can derive original opacity and then dalpha_dcoef = dopacity * opacity
+		opacity = combined_opacity / (coef + 1e-6);
+		dL_dcoef = dL_dopacity[idx] * opacity;
+		dL_dsqrtcoef = dL_dcoef * 0.5 * 1. / (coef + 1e-6);
+		dL_ddet0 = dL_dsqrtcoef / (det_1+1e-6);
+		dL_ddet1 = dL_dsqrtcoef * det_0 * (-1.f / (det_1 * det_1 + 1e-6));
+		//TODO gradient is zero if det_0 or det_1 < 0
+		dcoef_da = dL_ddet0 * cov2D[1][1] + dL_ddet1 * (cov2D[1][1] + kernel_size);
+		dcoef_db = dL_ddet0 * (-2. * cov2D[0][1]) + dL_ddet1 * (-2. * cov2D[0][1]);
+		dcoef_dc = dL_ddet0 * cov2D[0][0] + dL_ddet1 * (cov2D[0][0] + kernel_size);
 	
-	// Use helper variables for 2D covariance entries. More compact.
-	float a = cov2D[0][0] += kernel_size;
-	float b = cov2D[0][1];
-	float c = cov2D[1][1] += kernel_size;
-
+		// Use helper variables for 2D covariance entries. More compact.
+		a = cov2D[0][0] += kernel_size;
+		b = cov2D[0][1];
+		c = cov2D[1][1] += kernel_size;
+	}
+	else{
+		a = cov2D[0][0] += 0.3f;
+		b = cov2D[0][1];
+		c = cov2D[1][1] += 0.3f;
+	}
 	float denom = a * c - b * b;
 	float dL_da = 0, dL_db = 0, dL_dc = 0;
 	float denom2inv = 1.0f / ((denom * denom) + 0.0000001f);
@@ -235,18 +243,20 @@ __global__ void computeCov2DCUDA(int P,
 		dL_dc = denom2inv * (-a * a * dL_dconic.z + 2 * a * b * dL_dconic.y + (denom - a * c) * dL_dconic.x);
 		dL_db = denom2inv * 2 * (b * c * dL_dconic.x - (denom + 2 * b * b) * dL_dconic.y + a * b * dL_dconic.z);
 
-		if (det_0 <= 1e-6 || det_1 <= 1e-6){
-			dL_dopacity[idx] = 0;
-		} else {
-			// Gradiends of alpha respect to conv due to low pass filter
-			dL_da += dcoef_da;
-			dL_dc += dcoef_dc;
-			dL_db += dcoef_db;
+		if (mip){
+			if (det_0 <= 1e-6 || det_1 <= 1e-6){
+				dL_dopacity[idx] = 0;
+			} else {
+				// Gradiends of alpha respect to conv due to low pass filter
+				dL_da += dcoef_da;
+				dL_dc += dcoef_dc;
+				dL_db += dcoef_db;
 
-			// update dL_dopacity
-			dL_dopacity[idx] = dL_dopacity[idx] * coef;
+				// update dL_dopacity
+				dL_dopacity[idx] = dL_dopacity[idx] * coef;
+			}
 		}
-
+		
 		// Gradients of loss L w.r.t. each 3D covariance matrix (Vrk) entry, 
 		// given gradients w.r.t. 2D covariance matrix (diagonal).
 		// cov2D = transpose(T) * transpose(Vrk) * T;
@@ -616,6 +626,7 @@ void BACKWARD::preprocess(
 	const float focal_x, float focal_y,
 	const float tan_fovx, float tan_fovy,
 	const float kernel_size,
+	const bool mip,
 	const glm::vec3* campos,
 	const float3* dL_dmean2D,
 	const float* dL_dconic,
@@ -642,6 +653,7 @@ void BACKWARD::preprocess(
 		tan_fovx,
 		tan_fovy,
 		kernel_size,
+		mip,
 		viewmatrix,
 		dL_dconic,
 		(float3*)dL_dmean3D,

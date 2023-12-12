@@ -47,11 +47,11 @@ def create_offset_gt(image, offset):
     image = torch.nn.functional.grid_sample(image[None], id_coords[None], align_corners=True, padding_mode="border")[0]
     return image
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
-    scene = Scene(dataset, gaussians)
+    scene = Scene(dataset, gaussians, mip=mip)
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -73,7 +73,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if camera.image_width >= 800:
             highresolution_index.append(index)
 
-    gaussians.compute_3D_filter(cameras=trainCameras)
+    if mip:
+        gaussians.compute_3D_filter(cameras=trainCameras)
 
     viewpoint_stack = None
     ema_loss_for_log = 0.0
@@ -122,7 +123,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             # subpixel_offset *= 0.0
         else:
             subpixel_offset = None
-        render_pkg = render(viewpoint_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, subpixel_offset=subpixel_offset)
+        render_pkg = render(viewpoint_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, mip=mip, subpixel_offset=subpixel_offset)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
@@ -150,7 +151,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
+                scene.save(iteration, mip=mip)
 
             # Densification
             if iteration < opt.densify_until_iter:
@@ -161,15 +162,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
-                    gaussians.compute_3D_filter(cameras=trainCameras)
+                    if mip:
+                        gaussians.compute_3D_filter(cameras=trainCameras)
 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
-                    gaussians.reset_opacity()
+                    gaussians.reset_opacity(mip)
 
             if iteration % 100 == 0 and iteration > opt.densify_until_iter:
                 if iteration < opt.iterations - 100:
                     # don't update in the end of training
-                    gaussians.compute_3D_filter(cameras=trainCameras)
+                    if mip:
+                        gaussians.compute_3D_filter(cameras=trainCameras)
         
             # Optimizer step
             if iteration < opt.iterations:
@@ -254,6 +257,7 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
+    parser.add_argument("--mip", action="store_true")
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     
@@ -265,7 +269,7 @@ if __name__ == "__main__":
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.mip, args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
     # All done
     print("\nTraining complete.")

@@ -263,7 +263,7 @@ class GaussianModel:
             l.append('filter_3D')
         return l
 
-    def save_ply(self, path):
+    def save_ply(self, path, mip):
         mkdir_p(os.path.dirname(path))
 
         xyz = self._xyz.detach().cpu().numpy()
@@ -273,12 +273,16 @@ class GaussianModel:
         opacities = self._opacity.detach().cpu().numpy()
         scale = self._scaling.detach().cpu().numpy()
         rotation = self._rotation.detach().cpu().numpy()
-
-        filter_3D = self.filter_3D.detach().cpu().numpy()
-        dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes()]
-
+        
+        if mip:
+            filter_3D = self.filter_3D.detach().cpu().numpy()
+            dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=False)]
+            attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation, filter_3D), axis=1)
+        else:
+            dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=True)]
+            attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+            
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
-        attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation, filter_3D), axis=1)
         elements[:] = list(map(tuple, attributes))
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
@@ -305,27 +309,32 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
-    def reset_opacity(self):
-        # reset opacity to by considering 3D filter
-        current_opacity_with_filter = self.get_opacity_with_3D_filter
-        opacities_new = torch.min(current_opacity_with_filter, torch.ones_like(current_opacity_with_filter)*0.01)
-        
-        # apply 3D filter
-        scales = self.get_scaling
-        
-        scales_square = torch.square(scales)
-        det1 = scales_square.prod(dim=1)
-        
-        scales_after_square = scales_square + torch.square(self.filter_3D) 
-        det2 = scales_after_square.prod(dim=1) 
-        coef = torch.sqrt(det1 / det2)
-        opacities_new = opacities_new / coef[..., None]
-        opacities_new = inverse_sigmoid(opacities_new)
+    def reset_opacity(self, mip=False):
+        if mip:
+            # reset opacity to by considering 3D filter
+            current_opacity_with_filter = self.get_opacity_with_3D_filter
+            opacities_new = torch.min(current_opacity_with_filter, torch.ones_like(current_opacity_with_filter)*0.01)
+            
+            # apply 3D filter
+            scales = self.get_scaling
+            
+            scales_square = torch.square(scales)
+            det1 = scales_square.prod(dim=1)
+            
+            scales_after_square = scales_square + torch.square(self.filter_3D) 
+            det2 = scales_after_square.prod(dim=1) 
+            coef = torch.sqrt(det1 / det2)
+            opacities_new = opacities_new / coef[..., None]
+            opacities_new = inverse_sigmoid(opacities_new)
 
-        optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
-        self._opacity = optimizable_tensors["opacity"]
+            optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
+            self._opacity = optimizable_tensors["opacity"]
+        else:
+            opacities_new = inverse_sigmoid(torch.min(self.get_opacity, torch.ones_like(self.get_opacity) * 0.01))
+            optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
+            self._opacity = optimizable_tensors["opacity"]
 
-    def load_ply(self, path):
+    def load_ply(self, path, mip=False):
         plydata = PlyData.read(path)
 
         xyz = np.stack((np.asarray(plydata.elements[0]["x"]),
@@ -333,7 +342,8 @@ class GaussianModel:
                         np.asarray(plydata.elements[0]["z"])),  axis=1)
         opacities = np.asarray(plydata.elements[0]["opacity"])[..., np.newaxis]
 
-        filter_3D = np.asarray(plydata.elements[0]["filter_3D"])[..., np.newaxis]
+        if mip:
+            filter_3D = np.asarray(plydata.elements[0]["filter_3D"])[..., np.newaxis]
 
         features_dc = np.zeros((xyz.shape[0], 3, 1))
         features_dc[:, 0, 0] = np.asarray(plydata.elements[0]["f_dc_0"])
@@ -367,7 +377,8 @@ class GaussianModel:
         self._opacity = nn.Parameter(torch.tensor(opacities, dtype=torch.float, device="cuda").requires_grad_(True))
         self._scaling = nn.Parameter(torch.tensor(scales, dtype=torch.float, device="cuda").requires_grad_(True))
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
-        self.filter_3D = torch.tensor(filter_3D, dtype=torch.float, device="cuda")
+        if mip:
+            self.filter_3D = torch.tensor(filter_3D, dtype=torch.float, device="cuda")
 
         self.active_sh_degree = self.max_sh_degree
 
