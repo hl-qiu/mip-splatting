@@ -281,7 +281,14 @@ class GaussianModel:
         else:
             dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=True)]
             attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
-            
+        
+        # TODO
+        from poses_interpolation.inter_poses import hello
+        cams_location = hello(self.model_path, 240, 'all')
+        dtype_full.append('cams_location', 'f4')
+        attributes = np.concatenate((attributes, cams_location), axis=1)
+        
+        
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
         elements[:] = list(map(tuple, attributes))
         el = PlyElement.describe(elements, 'vertex')
