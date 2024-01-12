@@ -96,7 +96,7 @@ def inter_pos(data_dir, n_out_poses, key_poses):
     centers = out_poses[:,:,3:4].reshape(-1,3)
     look_at = np.mean(centers,axis=0)
     # print(look_at[1])
-    look_at[1] = look_at[1] + 3
+    look_at[1] = look_at[1] + 2
     # print(look_at)
     cam_up = np.array([0,-1,0]) 
     # 初始化一个空数组，用于存储结果
