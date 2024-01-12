@@ -29,6 +29,7 @@ class Scene:
         self.model_path = args.model_path
         self.loaded_iter = None
         self.gaussians = gaussians
+        self.source_path = args.source_path
 
         if load_iteration:
             if load_iteration == -1:
@@ -87,7 +88,7 @@ class Scene:
 
     def save(self, iteration, mip=False):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
-        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mip)
+        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mip, self.model_path, self.source_path)
 
     def getTrainCameras(self, scale=1.0):
         return self.train_cameras[scale]

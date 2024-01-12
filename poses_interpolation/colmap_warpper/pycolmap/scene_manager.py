@@ -8,9 +8,9 @@ import struct
 from collections import OrderedDict
 from itertools import combinations
 
-from colmap_warpper.pycolmap.camera import Camera
-from colmap_warpper.pycolmap.image import Image
-from colmap_warpper.pycolmap.rotation import Quaternion
+from poses_interpolation.colmap_warpper.pycolmap.camera import Camera
+from poses_interpolation.colmap_warpper.pycolmap.image import Image
+from poses_interpolation.colmap_warpper.pycolmap.rotation import Quaternion
 
 #-------------------------------------------------------------------------------
 #

@@ -8,10 +8,10 @@ import time
 
 # scenes = ["bicycle", "bonsai", "counter", "flowers", "garden", "stump", "treehill", "kitchen", "room"]
 # factors = [8, 8, 8, 8, 8, 8, 8, 8, 8]
-# scenes = ["bicycle"]
-# factors = [8]
-scenes = ["garden"]
+scenes = ["bicycle"]
 factors = [8]
+# scenes = ["garden"]
+# factors = [8]
 
 excluded_gpus = set([])
 
@@ -22,16 +22,16 @@ dry_run = False
 jobs = list(zip(scenes, factors))
 
 def train_scene(gpu, scene, factor):
-    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /data/kevin/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --mip"
+    cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python train.py -s /home/ubuntu/data/360_v2/{scene} -m {output_dir}/{scene} --eval -r {factor} --port {6009+int(gpu)} --kernel_size 0.1 --mip"
     print(cmd)
     if not dry_run:
         os.system(cmd)
     
-    for scale in [8, 4, 2, 1]:
-        cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r {scale} --data_device cpu --skip_train --mip"
-        print(cmd)
-        if not dry_run:
-            os.system(cmd)
+    # for scale in [8, 4, 2, 1]:
+    #     cmd = f"OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES={gpu} python render.py -m {output_dir}/{scene} -r {scale} --data_device cpu --skip_train --mip"
+    #     print(cmd)
+    #     if not dry_run:
+    #         os.system(cmd)
 
     return True
 

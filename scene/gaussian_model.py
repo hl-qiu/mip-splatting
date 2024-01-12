@@ -9,8 +9,10 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+import json
 import torch
 import numpy as np
+
 from utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
 from torch import nn
 import os
@@ -263,7 +265,7 @@ class GaussianModel:
             l.append('filter_3D')
         return l
 
-    def save_ply(self, path, mip):
+    def save_ply(self, path, mip, model_path, source_path):
         mkdir_p(os.path.dirname(path))
 
         xyz = self._xyz.detach().cpu().numpy()
@@ -282,17 +284,22 @@ class GaussianModel:
             dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=True)]
             attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
         
-        # TODO
-        from poses_interpolation.inter_poses import hello
-        cams_location = hello(self.model_path, 240, 'all')
-        dtype_full.append('cams_location', 'f4')
-        attributes = np.concatenate((attributes, cams_location), axis=1)
-        
-        
         elements = np.empty(xyz.shape[0], dtype=dtype_full)
         elements[:] = list(map(tuple, attributes))
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
+       
+    # 保存漫游轨迹
+    def save_cams_location(self, model_path, source_path):
+         # TODO
+        from poses_interpolation.inter_poses import inter_pos
+        from poses_interpolation.colmap2poses import colmap2cam_meta
+        colmap2cam_meta(source_path, 'cams_meta')
+        cams_location = inter_pos(source_path, 240, 'all')
+        # 写入json中
+        with open(model_path + '/cams_location.json', 'w') as f:
+            json.dump(cams_location, f)    
+
 
     def save_fused_ply(self, path):
         mkdir_p(os.path.dirname(path))

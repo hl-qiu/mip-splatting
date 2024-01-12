@@ -5,7 +5,7 @@ from glob import glob
 import click
 import numpy as np
 import cv2 as cv
-from colmap_warpper.pycolmap.scene_manager import SceneManager
+from poses_interpolation.colmap_warpper.pycolmap.scene_manager import SceneManager
 from typing import Mapping, Optional, Sequence, Text, Tuple, Union
 import enum
 
@@ -240,6 +240,10 @@ class Dataset:
 @click.option('--data_dir', type=str)
 @click.option('--out_mode', type=str, default='cams_meta')
 def main(data_dir, out_mode):
+    dataset = Dataset(data_dir)
+    dataset.export(data_dir, out_mode)
+
+def colmap2cam_meta(data_dir, out_mode):
     dataset = Dataset(data_dir)
     dataset.export(data_dir, out_mode)
 

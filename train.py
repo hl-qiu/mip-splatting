@@ -149,9 +149,12 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
-            if (iteration in saving_iterations):
+            if iteration in saving_iterations:
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration, mip=mip)
+            # 保存漫游轨迹
+            if iteration == saving_iterations[-1]:
+                gaussians.save_cams_location(scene.model_path, scene.source_path)
 
             # Densification
             if iteration < opt.densify_until_iter:
@@ -249,7 +252,7 @@ if __name__ == "__main__":
     op = OptimizationParams(parser)
     pp = PipelineParams(parser)
     parser.add_argument('--ip', type=str, default="127.0.0.1")
-    parser.add_argument('--port', type=int, default=6009)
+    parser.add_argument('--port', type=int, default=6008)
     parser.add_argument('--debug_from', type=int, default=-1)
     parser.add_argument('--detect_anomaly', action='store_true', default=False)
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
