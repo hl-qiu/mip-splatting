@@ -13,8 +13,10 @@ from argparse import ArgumentParser, Namespace
 import sys
 import os
 
+
 class GroupParams:
     pass
+
 
 class ParamGroup:
     def __init__(self, parser: ArgumentParser, name : str, fill_none = False):
@@ -56,7 +58,7 @@ class ModelParams(ParamGroup):
         self.eval = False
 
         
-        self._kernel_size = 0.3
+        self._kernel_size = 0.1
         # self.use_spatial_gaussian_bias = False
         self.ray_jitter = False
         self.resample_gt_image = False

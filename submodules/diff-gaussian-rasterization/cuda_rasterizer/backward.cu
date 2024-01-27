@@ -230,6 +230,11 @@ __global__ void computeCov2DCUDA(int P,
 		b = cov2D[0][1];
 		c = cov2D[1][1] += 0.3f;
 	}
+	// Use helper variables for 2D covariance entries. More compact.
+	//float a = cov2D[0][0] += 0.3f;
+	//float b = cov2D[0][1];
+	//float c = cov2D[1][1] += 0.3f;
+
 	float denom = a * c - b * b;
 	float dL_da = 0, dL_db = 0, dL_dc = 0;
 	float denom2inv = 1.0f / ((denom * denom) + 0.0000001f);
@@ -256,7 +261,7 @@ __global__ void computeCov2DCUDA(int P,
 				dL_dopacity[idx] = dL_dopacity[idx] * coef;
 			}
 		}
-		
+
 		// Gradients of loss L w.r.t. each 3D covariance matrix (Vrk) entry, 
 		// given gradients w.r.t. 2D covariance matrix (diagonal).
 		// cov2D = transpose(T) * transpose(Vrk) * T;
@@ -625,7 +630,7 @@ void BACKWARD::preprocess(
 	const float* projmatrix,
 	const float focal_x, float focal_y,
 	const float tan_fovx, float tan_fovy,
-	const float kernel_size,
+const float kernel_size,
 	const bool mip,
 	const glm::vec3* campos,
 	const float3* dL_dmean2D,
@@ -652,7 +657,7 @@ void BACKWARD::preprocess(
 		focal_y,
 		tan_fovx,
 		tan_fovy,
-		kernel_size,
+kernel_size,
 		mip,
 		viewmatrix,
 		dL_dconic,
@@ -689,7 +694,7 @@ void BACKWARD::render(
 	const uint2* ranges,
 	const uint32_t* point_list,
 	int W, int H,
-	const float2* subpixel_offset,
+const float2* subpixel_offset,
 	const float* bg_color,
 	const float2* means2D,
 	const float4* conic_opacity,

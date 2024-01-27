@@ -1,33 +1,39 @@
 #
-# Copyright (C) 2023, Inria
-# GRAPHDECO research group, https://team.inria.fr/graphdeco
-# All rights reserved.
-#
-# This software is free for non-commercial, research and evaluation use 
+# This software is free for non-commercial, research and evaluation use
 # under the terms of the LICENSE.md file.
 #
-# For inquiries contact  george.drettakis@inria.fr
+# For inquiries contact george.drettakis@inria.fr
 #
 
 import os
 import numpy as np
-import open3d as o3d
-import cv2
 import torch
 import random
 from random import randint
 from utils.loss_utils import l1_loss, ssim
 from gaussian_renderer import render, network_gui
 import sys
+from lpipsPyTorch import lpips
+
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
+from utils.logger_utils import training_report, prepare_output_and_logger
+
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
+
+
+from icecream import ic
+import random
+from prune import prune_list, calculate_v_imp_score
+from torch.optim.lr_scheduler import ExponentialLR
+
 try:
     from torch.utils.tensorboard import SummaryWriter
+
     TENSORBOARD_FOUND = True
 except ImportError:
     TENSORBOARD_FOUND = False
@@ -80,7 +86,8 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
     first_iter += 1
-    for iteration in range(first_iter, opt.iterations + 1):        
+    gaussians.scheduler = ExponentialLR(gaussians.optimizer, gamma=0.97)
+    for iteration in range(first_iter, opt.iterations + 1):
         if network_gui.conn == None:
             network_gui.try_connect()
         while network_gui.conn != None:
@@ -88,7 +95,7 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
                 net_image_bytes = None
                 custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
                 if custom_cam != None:
-                    net_image = render(custom_cam, gaussians, pipe, background, scaling_modifer)["render"]
+                    net_image = render(custom_cam, gaussians, pipe, background, kernel_size=dataset.kernel_size, mip=mip, scaling_modifer=scaling_modifer, subpixel_offset=subpixel_offset)["render"]
                     net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
                 network_gui.send(net_image_bytes, dataset.source_path)
                 if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
@@ -103,6 +110,7 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
         # Every 1000 its we increase the levels of SH up to a maximum degree
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
+            gaussians.scheduler.step()
 
         # Pick a random Camera
         if not viewpoint_stack:
@@ -148,13 +156,25 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
                 progress_bar.close()
 
             # Log and save
-            training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
+            #training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, dataset.kernel_size))
             if iteration in saving_iterations:
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration, mip=mip)
             # 保存漫游轨迹
             if iteration == saving_iterations[-1]:
                 gaussians.save_cams_location(scene.model_path, scene.source_path)
+            training_report(
+                tb_writer,
+                iteration,
+                Ll1,
+                loss,
+                l1_loss,
+                iter_start.elapsed_time(iter_end),
+                testing_iterations,
+                scene,
+                render,
+                (pipe, background, dataset.kernel_size),
+            )
 
             # Densification
             if iteration < opt.densify_until_iter:
@@ -176,16 +196,38 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
                     # don't update in the end of training
                     if mip:
                         gaussians.compute_3D_filter(cameras=trainCameras)
-        
+                        
+            if iteration in args.prune_iterations:
+                # TODO Add prunning types
+                gaussian_list, imp_list = prune_list(gaussians, scene, pipe, background, kernel_size=dataset.kernel_size, mip=mip, subpixel_offset=subpixel_offset)
+                i = args.prune_iterations.index(iteration)
+                v_list = calculate_v_imp_score(gaussians, imp_list, args.v_pow)
+                gaussians.prune_gaussians(
+                    (args.prune_decay**i) * args.prune_percent, v_list
+                )
+                if mip:
+                    gaussians.compute_3D_filter(cameras=trainCameras)
+
+
+
             # Optimizer step
             if iteration < opt.iterations:
                 gaussians.optimizer.step()
-                gaussians.optimizer.zero_grad(set_to_none = True)
+                gaussians.optimizer.zero_grad(set_to_none=True)
 
-            if (iteration in checkpoint_iterations):
+            if iteration in checkpoint_iterations:
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
-
+                if not os.path.exists(scene.model_path):
+                    os.makedirs(scene.model_path)
+                torch.save(
+                    (gaussians.capture(), iteration),
+                    scene.model_path + "/chkpnt" + str(iteration) + ".pth",
+                )
+                if iteration == checkpoint_iterations[-1]:
+                    gaussian_list, imp_list = prune_list(gaussians, scene, pipe, background)
+                    v_list = calculate_v_imp_score(gaussians, imp_list, args.v_pow)
+                    np.savez(os.path.join(scene.model_path,"imp_score"), v_list.cpu().detach().numpy()) 
 def prepare_output_and_logger(args):    
     if not args.model_path:
         if os.getenv('OAR_JOB_ID'):
@@ -261,6 +303,10 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--mip", action="store_true")
+    parser.add_argument("--prune_iterations", nargs="+", type=int, default=[16_000, 24_000])
+    parser.add_argument("--prune_percent", type=float, default=0.5)
+    parser.add_argument("--v_pow", type=float, default=0.1)
+    parser.add_argument("--prune_decay", type=float, default=0.8)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     

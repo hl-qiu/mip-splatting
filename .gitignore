@@ -14,4 +14,6 @@ debug*
 fused
 assets
 media
-
+logs_train
+vectree/pruned_distilled
+vectree/output
