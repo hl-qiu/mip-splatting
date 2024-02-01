@@ -114,7 +114,12 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
         # Loss
+        mask = viewpoint_cam.mask.cuda()
         gt_image = viewpoint_cam.original_image.cuda()
+        
+        # 在计算损失函数时，应用掩码
+        gt_image = gt_image * mask
+        image = image * mask
         # sample gt_image with subpixel offset
         if dataset.resample_gt_image:
             gt_image = create_offset_gt(gt_image, subpixel_offset)
