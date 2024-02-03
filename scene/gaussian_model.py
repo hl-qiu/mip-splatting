@@ -266,7 +266,7 @@ class GaussianModel:
             l.append('filter_3D')
         return l
 
-    def save_ply(self, path, mip, model_path, source_path):
+    def save_ply(self, path, mip):
         mkdir_p(os.path.dirname(path))
 
         xyz = self._xyz.detach().cpu().numpy()
@@ -290,27 +290,51 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
+    def remove_outliers_dbscan(self, xyz, eps=0.3, min_samples=50):
+        """
+        使用DBSCAN去除点云中的离群点
 
-    def save_filter_ply(self, path, mip, model_path, source_path):
+        参数：
+        - xyz: 输入的点云数据，格式为 N x 3 的 NumPy 数组
+        - eps: DBSCAN中邻域半径，默认为0.3
+        - min_samples: DBSCAN中邻域最小样本数，默认为10
+
+        返回：
+        去除离群点后的点云数据
+        """
+        # 数据标准化
+        scaler = StandardScaler()
+        scaled_points = scaler.fit_transform(xyz)
+
+        # 使用DBSCAN进行聚类
+        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+        labels = dbscan.fit_predict(scaled_points)
+
+        # 选取非离群点
+        # filtered_points = xyz[labels != -1]
+
+        return labels
+    
+    def save_filter_ply(self, path, mip):
         mkdir_p(os.path.dirname(path))
 
         xyz = self._xyz.detach().cpu().numpy()
-
+        
         # Apply DBSCAN clustering to filter outliers
-        filtered_xyz = self.remove_outliers_dbscan(xyz)
+        labels = self.remove_outliers_dbscan(xyz)
         # Get indices of points that are not outliers
-        indices = np.where(np.isin(xyz, filtered_xyz).all(axis=1))[0]
-
+        # indices = np.where(np.all(np.isin(xyz, filtered_xyz), axis=1))[0]
+        filtered_xyz = xyz[labels != -1]
         # Apply clustering to other attributes based on the filtered indices
         filtered_normals = np.zeros_like(filtered_xyz)
-        filtered_f_dc = self._features_dc[:, indices].detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        filtered_f_rest = self._features_rest[:, indices].detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        filtered_opacities = self._opacity[:, indices].detach().cpu().numpy()
-        filtered_scale = self._scaling[:, indices].detach().cpu().numpy()
-        filtered_rotation = self._rotation[:, indices].detach().cpu().numpy()
+        filtered_f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[labels != -1]
+        filtered_f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[labels != -1]
+        filtered_opacities = self._opacity.detach().cpu().numpy()[labels != -1]
+        filtered_scale = self._scaling.detach().cpu().numpy()[labels != -1]
+        filtered_rotation = self._rotation.detach().cpu().numpy()[labels != -1]
 
         if mip:
-            filtered_filter_3D = self.filter_3D[:, indices].detach().cpu().numpy()
+            filtered_filter_3D = self.filter_3D.detach().cpu().numpy()[labels != -1]
             dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=False)]
             attributes = np.concatenate((filtered_xyz, filtered_normals, filtered_f_dc, filtered_f_rest, filtered_opacities, filtered_scale, filtered_rotation, filtered_filter_3D), axis=1)
         else:
@@ -324,30 +348,7 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
-    def remove_outliers_dbscan(points, eps=0.3, min_samples=50):
-        """
-        使用DBSCAN去除点云中的离群点
-
-        参数：
-        - points: 输入的点云数据，格式为 N x 3 的 NumPy 数组
-        - eps: DBSCAN中邻域半径，默认为0.3
-        - min_samples: DBSCAN中邻域最小样本数，默认为10
-
-        返回：
-        去除离群点后的点云数据
-        """
-        # 数据标准化
-        scaler = StandardScaler()
-        scaled_points = scaler.fit_transform(points)
-
-        # 使用DBSCAN进行聚类
-        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-        labels = dbscan.fit_predict(scaled_points)
-
-        # 选取非离群点
-        filtered_points = points[labels != -1]
-
-        return filtered_points
+    
 
     # 保存漫游轨迹
     def save_cams_location(self, model_path, source_path):

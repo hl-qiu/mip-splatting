@@ -88,8 +88,8 @@ class Scene:
 
     def save(self, iteration, mip=False):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
-        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mip, self.model_path, self.source_path)
-        self.gaussians.save_filter_ply(os.path.join(point_cloud_path, "point_cloud_removeFloater.ply"), mip, self.model_path, self.source_path)
+        self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"), mip)
+        self.gaussians.save_filter_ply(os.path.join(point_cloud_path, "point_cloud_removeFloater.ply"), mip)
 
     def getTrainCameras(self, scale=1.0):
         return self.train_cameras[scale]

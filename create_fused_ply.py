@@ -1,3 +1,4 @@
+import sys
 import torch
 import os
 from utils.general_utils import safe_state
@@ -10,9 +11,10 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Testing script parameters")
     model = ModelParams(parser, sentinel=True)
     pipeline = PipelineParams(parser)
-    parser.add_argument("--output_ply", type=str, default="./output.ply")
+    parser.add_argument("--output_ply", type=str, default="output/bicycle/output.ply")
     parser.add_argument("--quiet", action="store_true")
-    args = get_combined_args(parser)
+    # args = get_combined_args(parser)
+    args = parser.parse_args(sys.argv[1:])
     print("create fused ply for " + args.model_path)
 
     # Initialize system state (RNG)
@@ -21,5 +23,6 @@ if __name__ == "__main__":
     gaussians = GaussianModel(dataset.sh_degree)
         
     gaussians.load_ply(os.path.join(dataset.model_path, "point_cloud", "iteration_30000", "point_cloud.ply"))
-    gaussians.save_fused_ply(args.output_ply)
+    # gaussians.save_fused_ply(args.output_ply)
+    gaussians.save_filter_ply(args.output_ply, mip=True)
     
