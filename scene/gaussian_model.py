@@ -312,12 +312,15 @@ class GaussianModel:
         # 获取每个类别的点数
         unique_labels, counts = np.unique(labels, return_counts=True)
         # 获取点数最多的类别的ID
-        max_count_label_id = unique_labels[np.argmax(counts)]
+        # max_count_label_id = unique_labels[np.argmax(counts)]
+        
+        # 获取点数最多的前两个类别的ID列表
+        max_two_label_ids = unique_labels[np.argsort(counts)[::-1]][:2]
 
         # 选取非离群点
-        # filtered_points = xyz[labels == max_count_label_id]
+        # filtered_points = xyz[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
 
-        return labels, max_count_label_id
+        return labels, max_two_label_ids
     
     def save_filter_ply(self, path, mip):
         mkdir_p(os.path.dirname(path))
@@ -325,20 +328,20 @@ class GaussianModel:
         xyz = self._xyz.detach().cpu().numpy()
         
         # Apply DBSCAN clustering to filter outliers
-        labels, max_count_label_id = self.remove_outliers_dbscan(xyz)
+        labels, max_two_label_ids = self.remove_outliers_dbscan(xyz)
         # Get indices of points that are not outliers
         # indices = np.where(np.all(np.isin(xyz, filtered_xyz), axis=1))[0]
-        filtered_xyz = xyz[labels == max_count_label_id]
+        filtered_xyz = xyz[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
         # Apply clustering to other attributes based on the filtered indices
         filtered_normals = np.zeros_like(filtered_xyz)
-        filtered_f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[labels == max_count_label_id]
-        filtered_f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[labels == max_count_label_id]
-        filtered_opacities = self._opacity.detach().cpu().numpy()[labels == max_count_label_id]
-        filtered_scale = self._scaling.detach().cpu().numpy()[labels == max_count_label_id]
-        filtered_rotation = self._rotation.detach().cpu().numpy()[labels == max_count_label_id]
+        filtered_f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
+        filtered_f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
+        filtered_opacities = self._opacity.detach().cpu().numpy()[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
+        filtered_scale = self._scaling.detach().cpu().numpy()[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
+        filtered_rotation = self._rotation.detach().cpu().numpy()[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
 
         if mip:
-            filtered_filter_3D = self.filter_3D.detach().cpu().numpy()[labels == max_count_label_id]
+            filtered_filter_3D = self.filter_3D.detach().cpu().numpy()[labels == max_two_label_ids[0] | labels == max_two_label_ids[1]]
             dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=False)]
             attributes = np.concatenate((filtered_xyz, filtered_normals, filtered_f_dc, filtered_f_rest, filtered_opacities, filtered_scale, filtered_rotation, filtered_filter_3D), axis=1)
         else:
