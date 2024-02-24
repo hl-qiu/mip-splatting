@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Testing script parameters")
     model = ModelParams(parser, sentinel=True)
     pipeline = PipelineParams(parser)
-    parser.add_argument("--output_ply", type=str, default="/data/qhl/project/video-to-gaussian/file/video/2024/01/04/fan/fan_removeFloater_twoClass_0.3_60.ply")
+    parser.add_argument("--output_ply", type=str, default="/data/qhl/project/video-to-gaussian/file/video/2024/01/04/fan/fan_removeFloater_downsample10_twoClass_0.3_60.ply")
     parser.add_argument("--quiet", action="store_true")
     # args = get_combined_args(parser)
     args = parser.parse_args(sys.argv[1:])
@@ -24,6 +24,6 @@ if __name__ == "__main__":
 
     gaussians.load_ply(os.path.join(dataset.model_path, "point_cloud", "iteration_30000", "point_cloud.ply"), mip=True)
     # gaussians.save_fused_ply(args.output_ply)
-    gaussians.save_filter_ply(args.output_ply, mip=True)
+    gaussians.save_filter_ply2(args.output_ply, mip=True)
     # gaussians.save_filter_ply(args.output_ply, mip=False)
     

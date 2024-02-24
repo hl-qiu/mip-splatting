@@ -355,7 +355,42 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
-    
+    def save_filter_ply2(self, path, mip):
+        mkdir_p(os.path.dirname(path))
+
+        xyz = self._xyz.detach().cpu().numpy()
+        print(len(xyz))
+        # TODO 1、下采样10倍
+        xyz = xyz[::10]
+        print(len(xyz))
+        
+        # Apply DBSCAN clustering to filter outliers
+        labels, max_two_label_ids = self.remove_outliers_dbscan(xyz)
+        # Get indices of points that are not outliers
+        # indices = np.where(np.all(np.isin(xyz, filtered_xyz), axis=1))[0]
+        filtered_xyz = xyz[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+        # Apply clustering to other attributes based on the filtered indices
+        filtered_normals = np.zeros_like(filtered_xyz)
+        filtered_f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+        filtered_f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+        filtered_opacities = self._opacity.detach().cpu().numpy()[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+        filtered_scale = self._scaling.detach().cpu().numpy()[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+        filtered_rotation = self._rotation.detach().cpu().numpy()[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+
+        if mip:
+            filtered_filter_3D = self.filter_3D.detach().cpu().numpy()[np.any([labels == max_two_label_ids[0], labels == max_two_label_ids[1]], axis=0)]
+            dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=False)]
+            attributes = np.concatenate((filtered_xyz, filtered_normals, filtered_f_dc, filtered_f_rest, filtered_opacities, filtered_scale, filtered_rotation, filtered_filter_3D), axis=1)
+        else:
+            dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=True)]
+            attributes = np.concatenate((filtered_xyz, filtered_normals, filtered_f_dc, filtered_f_rest, filtered_opacities, filtered_scale, filtered_rotation), axis=1)
+
+        # Rest of the code remains unchanged
+
+        elements = np.empty(filtered_xyz.shape[0], dtype=dtype_full)
+        elements[:] = list(map(tuple, attributes))
+        el = PlyElement.describe(elements, 'vertex')
+        PlyData([el]).write(path)
 
     # 保存漫游轨迹
     def save_cams_location(self, model_path, source_path):
