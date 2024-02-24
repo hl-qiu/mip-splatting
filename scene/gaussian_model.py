@@ -290,7 +290,7 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
-    def remove_outliers_dbscan(self, xyz, eps=0.3, min_samples=50):
+    def remove_outliers_dbscan(self, xyz, eps=0.3, min_samples=60):
         """
         使用DBSCAN去除点云中的离群点
 
