@@ -366,41 +366,52 @@ class GaussianModel:
         print(len(p2))
         
         # TODO 2、聚类p2，获得点数量最多的前两个类别对应的点云p3
-        p2_labels, p2_max_two_label_ids = self.remove_outliers_dbscan(p2)
-        p3 = p2[np.any([p2_labels == p2_max_two_label_ids[0], p2_labels == p2_max_two_label_ids[1]], axis=0)]
+        p2_labels, p2_max_two_label_ids = self.remove_outliers_dbscan(p2, eps=0.3, min_samples=80)
+        # p3 = p2[np.any([p2_labels == p2_max_two_label_ids[0], p2_labels == p2_max_two_label_ids[1]], axis=0)]
+        p3 = p2[np.any([p2_labels == p2_max_two_label_ids[0]], axis=0)]
         
         # TODO 3、计算p3的aabb盒
-        point_minx,point_maxx = torch.min(p3[...,0]),torch.max(p3[...,0])
-        point_miny,point_maxy = torch.min(p3[...,1]),torch.max(p3[...,1])
-        point_minz,point_maxz = torch.min(p3[...,2]),torch.max(p3[...,2])
+        point_minx,point_maxx = np.min(p3[...,0]),np.max(p3[...,0])
+        point_miny,point_maxy = np.min(p3[...,1]),np.max(p3[...,1])
+        point_minz,point_maxz = np.min(p3[...,2]),np.max(p3[...,2])
         aabb = [point_minx,point_miny,point_minz,point_maxx,point_maxy,point_maxz]
         
         # TODO 4、使用该aabb盒过滤原始点云p1，只保留内部点，得到新的点云p4和对应的标签p4_labels
         p4 = []
-        p4_labels = np.zeros_like(p1)
+        labels = np.zeros(p1.shape[0])
+        indexs = []
         for i, point in enumerate(p1):
             x, y, z = point
-            if aabb[0] <= x <= aabb[1] and aabb[2] <= y <= aabb[3] and aabb[4] <= z <= aabb[5]:
+            if aabb[0] <= x <= aabb[3] and aabb[1] <= y <= aabb[4] and aabb[2] <= z <= aabb[5]:
                 p4.append(point)
-                p4_labels[i] = 1
+                labels[i] = 1
+                indexs.append(i)
         p4 = np.array(p4)   # 转换为 numpy 数组
+        print(p4.shape[0])
+        
         
         # TODO 5、对p4聚类
-        p4_labels, p4_max_two_label_ids = self.remove_outliers_dbscan(p4)
+        p4_labels, p4_max_two_label_ids = self.remove_outliers_dbscan(p4, eps=0.2, min_samples=60)
+        # p4_filter = p4[p4_labels!=-1]
+        # indexs = np.array(indexs)[p4_labels!=-1]
+        indexs = np.array(indexs)[np.any([p4_labels == p4_max_two_label_ids[0]], axis=0)]
         
         # 对Gaussian的其他属性进行过滤
-
-        filtered_xyz = p1[p4_labels==1]
+                
+        filtered_xyz = p1[indexs]
+        
+        # if len(p4_filter) == len(filtered_xyz):
+        #     print("chenggongle...")
         # Apply clustering to other attributes based on the filtered indices
         filtered_normals = np.zeros_like(filtered_xyz)
-        filtered_f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[p4_labels==1]
-        filtered_f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[p4_labels==1]
-        filtered_opacities = self._opacity.detach().cpu().numpy()[p4_labels==1]
-        filtered_scale = self._scaling.detach().cpu().numpy()[p4_labels==1]
-        filtered_rotation = self._rotation.detach().cpu().numpy()[p4_labels==1]
+        filtered_f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[indexs]
+        filtered_f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()[indexs]
+        filtered_opacities = self._opacity.detach().cpu().numpy()[indexs]
+        filtered_scale = self._scaling.detach().cpu().numpy()[indexs]
+        filtered_rotation = self._rotation.detach().cpu().numpy()[indexs]
 
         if mip:
-            filtered_filter_3D = self.filter_3D.detach().cpu().numpy()[p4_labels==1]
+            filtered_filter_3D = self.filter_3D.detach().cpu().numpy()[indexs]
             dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes(exclude_filter=False)]
             attributes = np.concatenate((filtered_xyz, filtered_normals, filtered_f_dc, filtered_f_rest, filtered_opacities, filtered_scale, filtered_rotation, filtered_filter_3D), axis=1)
         else:
