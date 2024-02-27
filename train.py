@@ -147,6 +147,12 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
             # 保存漫游轨迹
             if iteration == saving_iterations[-1]:
                 gaussians.save_cams_location(scene.model_path, scene.source_path)
+            try:
+                if iteration == saving_iterations[-1]:
+                    gaussians.save_cams_location(scene.model_path, scene.source_path)
+            except Exception as e:
+                # 在这里处理异常，比如打印异常信息
+                print("Roaming trajectory production failed:", e)
 
             # Densification
             if iteration < opt.densify_until_iter:
