@@ -145,8 +145,6 @@ def training(dataset, opt, pipe, mip, testing_iterations, saving_iterations, che
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration, mip=mip)
             # 保存漫游轨迹
-            if iteration == saving_iterations[-1]:
-                gaussians.save_cams_location(scene.model_path, scene.source_path)
             try:
                 if iteration == saving_iterations[-1]:
                     gaussians.save_cams_location(scene.model_path, scene.source_path)
